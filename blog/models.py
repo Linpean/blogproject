@@ -2,6 +2,8 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils.six import python_2_unicode_compatible
+import markdown
+from django.utils.html import strip_tags
 
 
 #分类
@@ -44,7 +46,24 @@ class Post(models.Model):
     modified_time = models.DateTimeField()
 
     #文章摘要，默认情况下CharField必须传入参数，所以设置blank = True，我们就可以在需要的时候不写摘要了
-    excerpt = models.CharField(max_length = 100, blank = True)
+    excerpt = models.CharField(max_length = 200, blank = True)
+
+
+    def save(self, *args, **kwargs):    
+        # 如果没有填写摘要
+        if not self.excerpt:
+            # 首先实例化一个 Markdown 类，用于渲染 body 的文本
+            md = markdown.Markdown(extensions=[
+                'markdown.extensions.extra',
+                'markdown.extensions.codehilite',
+            ])
+            # 先将 Markdown 文本渲染成 HTML 文本
+            # strip_tags 去掉 HTML 文本的全部 HTML 标签
+            # 从文本摘取前 128 个字符赋给 excerpt
+            self.excerpt = strip_tags(md.convert(self.body))[:196]
+
+        # 调用父类的 save 方法将数据保存到数据库中
+        super(Post, self).save(*args, **kwargs)
 
     # 这是分类与标签，分类与标签的模型我们已经定义在上面。
     # 我们在这里把文章对应的数据库表和分类、标签对应的数据库表关联了起来，但是关联形式稍微有点不同。
@@ -64,6 +83,11 @@ class Post(models.Model):
     author = models.ForeignKey(User)
 
 
+    # ... 其它已有字段
+    # 新增 views 字段记录阅读量
+    views = models.PositiveIntegerField(default=0)
+
+
     def __str__(self):
         return self.title
 
@@ -77,3 +101,7 @@ class Post(models.Model):
 
     class Meta():
         ordering = ['-created_time']
+
+    def increase_views(self):
+        self.views += 1
+        self.save(update_fields=['views'])
